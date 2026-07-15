@@ -448,7 +448,7 @@
 
     const firebaseApp = initializeApp(firebaseConfig);
     const auth = getAuth(firebaseApp);
-    const db = getFirestore(firebaseApp);
+    const db = getFirestore(firebaseApp, "default");
     const googleProvider = new GoogleAuthProvider();
 
     const TEMPLATES = {
@@ -863,7 +863,7 @@
         + '<header>'
         + '  <div class="wrap header-inner">'
         + '    <div class="title">🌱 植物管理アプリ</div>'
-        + '    <div class="subtitle">Googleログイン / Firestore保存 / 参考頻度つき</div>'
+        + '    <div class="subtitle">Googleログイン / Firestore default DB / 参考頻度つき</div>'
         + '    <div class="header-actions">'
         +        authHtml
         + '      <button class="btn btn-primary" data-action="open-add" ' + (!state.user ? "disabled" : "") + '>＋ 植物を追加</button>'
@@ -1118,7 +1118,7 @@
         + renderSidebar(filtered)
         + renderDetail(selected)
         + '</main>'
-        + '<div class="footer">Googleログイン版。植物データはFirestoreに保存、画像は端末内保存です。</div>'
+        + '<div class="footer">Googleログイン版。植物データはFirestore database ID「default」に保存、画像は端末内保存です。</div>'
         + renderForm();
 
       document.getElementById("app").innerHTML = html;
