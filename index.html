@@ -124,6 +124,10 @@
       cursor: pointer;
       font: inherit;
     }
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
     .btn {
       display: inline-flex;
       align-items: center;
@@ -410,8 +414,42 @@
 <body>
   <div id="app"></div>
 
-  <script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
+    import {
+      getAuth,
+      GoogleAuthProvider,
+      signInWithPopup,
+      signOut,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
+    import {
+      getFirestore,
+      collection,
+      doc,
+      setDoc,
+      deleteDoc,
+      onSnapshot,
+      serverTimestamp,
+      getDocs,
+      writeBatch
+    } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
+
     document.documentElement.style.setProperty("--plant-bg", "url('plant-bg.jpg')");
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBYgfbqfFH2gnRkhO8G7udqYRnIGWuvkIg",
+      authDomain: "botanical-acdde.firebaseapp.com",
+      projectId: "botanical-acdde",
+      storageBucket: "botanical-acdde.firebasestorage.app",
+      messagingSenderId: "811761633671",
+      appId: "1:811761633671:web:8a2508d12095a79bfdeb22"
+    };
+
+    const firebaseApp = initializeApp(firebaseConfig);
+    const auth = getAuth(firebaseApp);
+    const db = getFirestore(firebaseApp);
+    const googleProvider = new GoogleAuthProvider();
 
     const TEMPLATES = {
       "サボテン": { wateringIntervalDays: 14, repotIntervalMonths: 24 },
@@ -425,10 +463,9 @@
 
     const PLANT_CARE_PRESETS = {"シルクジャスミン（ゲッキツ）": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "万年青（オモト）": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の参考値。環境に合わせて調整。"}, "アブチロン": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の参考値。環境に合わせて調整。"}, "スパティフィラム": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "ストレリチア（極楽鳥花）": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "モンステラ": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "ビカクシダ（コウモリラン）": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "フィカス・プミラ": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "ドラセナ": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "ガジュマル": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "カラジウム（カラジューム）": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の参考値。環境に合わせて調整。"}, "ザミア": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥に強め。水のあげすぎに注意。"}, "ゲオゲナンツス・ペーピヒー": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "アイビー（ヘデラ）": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "エバーフレッシュ": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "フペルジア・スクアローサ": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "湿度を好む傾向。乾燥しすぎに注意。"}, "パキラ": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "ポトス": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "フィカス・ベンジャミン": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "アスパラガス・セタケウス": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の参考値。環境に合わせて調整。"}, "ベゴニア・マクラータ": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "つる性ガジュマル（フィカス・シャングリア）": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "フィロデンドロン・バーキン": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "ベゴニア・ロマネスク": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "フィカス・ウンベラータ": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "クワズイモ": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の参考値。環境に合わせて調整。"}, "コーヒーの木": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "オリヅルラン": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "フィカス・デコラ・トリカラー": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "ゴムの木": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "インドゴムノキ": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "カポック（シェフレラ）": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "ソフォラ・リトルベイビー": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "フィロデンドロン・セローム": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "ポリシャス（ポリスキアス）": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "アスプレニウム": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "湿度を好む傾向。乾燥しすぎに注意。"}, "シンゴニウム": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "ミリオンバンブー": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "テーブルヤシ": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "極端な乾燥を避ける。生育期は水切れに注意。"}, "ユッカ（青年の木）": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥に強め。水のあげすぎに注意。"}, "アグラオネマ": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "フィカス・アルテシーマ（フィカス・アルテシマ）": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "コルジリネ（コルディリネ）": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "幸福の木（ドラセナ・マッサンゲアナ）": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "パンノキ": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "クロトン": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "ディフェンバキア": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "トックリラン（ノリナ）": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥に強め。水のあげすぎに注意。"}, "カラテア": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "カラテア・ランキフォリア": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "フペルジア・ゴエベリー": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "湿度を好む傾向。乾燥しすぎに注意。"}, "ツピタンサス（シェフレラ・ピュックレリ）": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "フィットニア": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "ピレア": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "コルディリネ・チョコレートクイーン": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "ビロードカズラ": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "トラディスカンティア・ゼブリナ": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "シェフレラ・アンガスティフォリア": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "ソフォラ・ミクロフィラ": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "ヘテロパナックス・フレグランス": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "アロカシア・アマゾニカ": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "フィカス・エラスティカ・バーガンディ（フィカス・バーガンディ）": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "ボトルツリー(ブラキキトン)": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥に強め。水のあげすぎに注意。"}, "アラレア（ディジゴセカ）": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の参考値。環境に合わせて調整。"}, "フィロデンドロン": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "ブラッサイア": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "ホヤ": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "アンスリウム・クラリネルビウム": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "マユハケオモト（ハエマンサス）": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥に強め。水のあげすぎに注意。"}, "サンスベリア・ロブスタ・ブルー": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥に強め。水のあげすぎに注意。"}, "アロカシア": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "エピスシア": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "コロカシア": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "アツバキミガヨラン": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥に強め。水のあげすぎに注意。"}, "ゴッドセフィアナ": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の参考値。環境に合わせて調整。"}, "シッサス": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "ステレオスペルマム": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の参考値。環境に合わせて調整。"}, "マドカズラ": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "ラセンイ": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "湿度を好む傾向。乾燥しすぎに注意。"}, "ムラサキオモト": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "ヘリコニア": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "プリンセチア ルビーアイ": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "プリンセチア クリスタル*スノー": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "プリンセチア ピンクシャンデリア": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "プリンセチア ローザ": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "プリンセチア パール": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "プリンセチア ピュアホワイト": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "プリンセチア チェリーレッド": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "プリンセチア ルージュ": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "プリンセチア ホットピンク": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "プリンセチア ピンクホワイト": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "テンナンショウ": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の参考値。環境に合わせて調整。"}, "プリンセチア": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "フィカス・ベンガレンシス": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "サンスベリア・トリファスキアタ・ローレンティ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥に強め。水のあげすぎに注意。"}, "フィカス・ベンジャミン・バロック": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "ヒメモンステラ": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "アンスリウム": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "水切れと乾燥に注意。空中湿度も意識。"}, "ラカンマキ": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "ホンコンカポック(ハッピーイエロー)": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "バオバブ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥に強め。水のあげすぎに注意。"}, "オーガスタ": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "サンスベリア・ハニー": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥に強め。水のあげすぎに注意。"}, "サンスベリア・サムライドワーフ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥に強め。水のあげすぎに注意。"}, "サンスベリア・キリンドリカ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥に強め。水のあげすぎに注意。"}, "サンスベリア・フランシシー": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥に強め。水のあげすぎに注意。"}, "ペペロミア・プテオラータ": {"wateringIntervalDays": 7, "repotIntervalMonths": 12, "memo": "一般的な観葉植物の目安。土の表面から中が乾いたら調整。"}, "フィカス・スウィートハート": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "樹木系の一般目安。生育期はやや多め、冬は控えめ。"}, "カシワバゴムノキ(フィカス・リラータ)": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "ザミオクルカス": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "ネフロレピス": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "湿度を好む傾向。乾燥しすぎに注意。"}, "シーグレープ(ハマベブドウ)": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "アビス": {"wateringIntervalDays": 4, "repotIntervalMonths": 12, "memo": "湿度を好む傾向。乾燥しすぎに注意。"}, "アレカヤシ": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "極端な乾燥を避ける。生育期は水切れに注意。"}, "クリプタンサス": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥に強め。水のあげすぎに注意。"}, "シュロチク(棕櫚竹)": {"wateringIntervalDays": 7, "repotIntervalMonths": 18, "memo": "極端な乾燥を避ける。生育期は水切れに注意。"}, "ドラセナ・カンボジアーナ": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "ジャックと豆の木": {"wateringIntervalDays": 10, "repotIntervalMonths": 18, "memo": "やや乾燥気味でも育てやすい。土の乾き具合を見て調整。"}, "アガベ・パリー": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・ユタエンシス": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・ホリダ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・笹の雪": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・チタノタ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・雷神": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・イシスメンシス": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・アメリカーナ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・ハデス": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・吉祥天錦": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・サルミアナ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・オテロイ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・ジャガーノート": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・フェロックス": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・陽炎（ユタエンシス）": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・陽炎（チタノタ）": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・マクロアカンサ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・甲蟹": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・悪魔くん": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・ジェスブレイティー": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・パリー ssp. パリー": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・デザーティ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・バーントバーガンディ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・チタノタ ローズ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・皇冠": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・ドラゴントゥース": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・アテナータ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・オテロイ オアハカ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・アプラナータ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・シーザー": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・グラシリス": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・パラサナ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・武蔵坊": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・オバティフォリア": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・星空": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・シャウイー": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・清櫻": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・キシロナカンサ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・ユタエンシス エボリスピナ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・プロトアメリカーナ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・姫笹の雪": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・ボビコルヌータ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・アスペリマ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・笹吹雪": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・五色万代": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・トランカータ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・南アフリカダイヤモンド": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "アガベ・パリー トルンカータ オリザバ": {"wateringIntervalDays": 14, "repotIntervalMonths": 24, "memo": "乾燥気味に管理。春秋は土が乾いて数日後、冬は控えめ。"}, "ビカクシダ・リドレイ": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・グランデ": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・ビーチー": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・ベイチー": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・ウィリンキー": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・ビフルカツム": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・ネザーランド": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・アルシコルネ": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・ヒリー": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・スパーバム": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・コロナリウム": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・エレファントティス": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・アンディヌム": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・ステマリア": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・ワリチー": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・マダガスカリエンセ": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・クアドリディコトマム": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・ホルタミー": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}, "ビカクシダ・バレイ": {"wateringIntervalDays": 5, "repotIntervalMonths": 12, "memo": "板付けや水苔の乾き具合を見て調整。乾き切る前後を目安に。"}};
 
-    const LS_USER = "PLANTCARE_USER_HTML";
-
     const state = {
       user: null,
+      authReady: false,
       plants: [],
       query: "",
       filterTab: "all",
@@ -436,8 +473,11 @@
       showForm: false,
       editingId: null,
       loginOpen: false,
-      emailInput: ""
+      formDraft: null,
+      loadingPlants: false
     };
+
+    let plantsUnsubscribe = null;
 
     function newId() {
       return String(Date.now()) + "_" + Math.random().toString(36).slice(2, 7);
@@ -486,6 +526,10 @@
       };
     }
 
+    function normalizePlant(id, data) {
+      return Object.assign(emptyPlant(), data || {}, { id: id });
+    }
+
     function digitsOnly(s) {
       const arr = String(s || "").split("");
       const out = [];
@@ -526,38 +570,203 @@
         .replaceAll('"', "&quot;");
     }
 
-    function getStorageKey() {
-      if (!state.user) return "PLANTCARE_GUEST_HTML";
-      return "PLANTCARE_" + state.user.provider + "_" + state.user.identifier + "_HTML";
+    function showError(error, fallback) {
+      console.error(error);
+      const message = error && error.message ? error.message : fallback;
+      alert(message || "エラーが発生しました。");
     }
 
-    function loadUser() {
+    function getUid() {
+      return state.user ? state.user.uid : "";
+    }
+
+    function plantsCollectionRef() {
+      return collection(db, "users", getUid(), "plants");
+    }
+
+    function plantDocRef(id) {
+      return doc(db, "users", getUid(), "plants", id);
+    }
+
+    function localImageKey() {
+      return "PLANT_LOCAL_IMAGES_" + getUid();
+    }
+
+    function getLocalImageMap() {
+      if (!state.user) return {};
       try {
-        const raw = localStorage.getItem(LS_USER);
-        state.user = raw ? JSON.parse(raw) : null;
+        return JSON.parse(localStorage.getItem(localImageKey()) || "{}");
       } catch (e) {
-        state.user = null;
+        return {};
       }
     }
 
-    function saveUser() {
-      if (state.user) localStorage.setItem(LS_USER, JSON.stringify(state.user));
-      else localStorage.removeItem(LS_USER);
+    function saveLocalImageMap(map) {
+      if (!state.user) return;
+      try {
+        localStorage.setItem(localImageKey(), JSON.stringify(map || {}));
+      } catch (e) {
+        alert("画像の端末保存容量が上限に近い可能性があります。画像を小さくして再登録してください。");
+      }
     }
 
-    function loadPlants() {
-      try {
-        const raw = localStorage.getItem(getStorageKey());
-        state.plants = raw ? JSON.parse(raw) : [];
-        state.selectedId = null;
-      } catch (e) {
+    function getPlantImage(id) {
+      const map = getLocalImageMap();
+      return map[id] || "";
+    }
+
+    function setPlantImageLocal(id, image) {
+      const map = getLocalImageMap();
+      if (image) map[id] = image;
+      else delete map[id];
+      saveLocalImageMap(map);
+    }
+
+    function removePlantImageLocal(id) {
+      const map = getLocalImageMap();
+      delete map[id];
+      saveLocalImageMap(map);
+    }
+
+    function firestorePlantData(p) {
+      return {
+        name: p.name || "",
+        species: p.species || "",
+        purchaseDate: p.purchaseDate || "",
+        location: p.location || "",
+        lastWateredDate: p.lastWateredDate || "",
+        wateringIntervalDays: p.wateringIntervalDays || "",
+        lastRepottedDate: p.lastRepottedDate || "",
+        repotIntervalMonths: p.repotIntervalMonths || "",
+        notes: p.notes || "",
+        updatedAt: serverTimestamp()
+      };
+    }
+
+    function subscribePlants() {
+      if (plantsUnsubscribe) {
+        plantsUnsubscribe();
+        plantsUnsubscribe = null;
+      }
+
+      if (!state.user) {
         state.plants = [];
-        state.selectedId = null;
+        state.loadingPlants = false;
+        render();
+        return;
+      }
+
+      state.loadingPlants = true;
+      render();
+
+      plantsUnsubscribe = onSnapshot(
+        plantsCollectionRef(),
+        function(snapshot) {
+          const imageMap = getLocalImageMap();
+          state.plants = snapshot.docs.map(function(d) {
+            const p = normalizePlant(d.id, d.data());
+            p.image = imageMap[d.id] || "";
+            return p;
+          });
+          state.loadingPlants = false;
+          if (state.selectedId && !state.plants.find(function(p) { return p.id === state.selectedId; })) {
+            state.selectedId = null;
+          }
+          render();
+        },
+        function(error) {
+          state.loadingPlants = false;
+          showError(error, "植物データの読み込みに失敗しました。");
+          render();
+        }
+      );
+    }
+
+    async function signInGoogle() {
+      try {
+        await signInWithPopup(auth, googleProvider);
+      } catch (e) {
+        showError(e, "Googleログインに失敗しました。");
       }
     }
 
-    function savePlants() {
-      localStorage.setItem(getStorageKey(), JSON.stringify(state.plants));
+    async function logout() {
+      try {
+        await signOut(auth);
+      } catch (e) {
+        showError(e, "ログアウトに失敗しました。");
+      }
+    }
+
+    async function upsertPlant(p) {
+      if (!state.user) {
+        alert("ログインしてください。");
+        return;
+      }
+      try {
+        const id = p.id || newId();
+        const data = firestorePlantData(Object.assign({}, p, { id: id }));
+
+        if (p.image) {
+          setPlantImageLocal(id, p.image);
+        }
+
+        await setDoc(plantDocRef(id), data, { merge: true });
+        state.selectedId = id;
+        state.showForm = false;
+        state.editingId = null;
+        state.formDraft = null;
+        render();
+      } catch (e) {
+        showError(e, "植物データの保存に失敗しました。");
+      }
+    }
+
+    async function deletePlant(id) {
+      if (!state.user) return;
+      if (!confirm("この植物を削除しますか？")) return;
+      try {
+        await deleteDoc(plantDocRef(id));
+        removePlantImageLocal(id);
+        if (state.selectedId === id) state.selectedId = null;
+      } catch (e) {
+        showError(e, "植物データの削除に失敗しました。");
+      }
+    }
+
+    async function markWatered(id) {
+      if (!state.user) return;
+      try {
+        await setDoc(plantDocRef(id), { lastWateredDate: todayStr(), updatedAt: serverTimestamp() }, { merge: true });
+      } catch (e) {
+        showError(e, "水やり日の更新に失敗しました。");
+      }
+    }
+
+    async function markRepotted(id) {
+      if (!state.user) return;
+      try {
+        await setDoc(plantDocRef(id), { lastRepottedDate: todayStr(), updatedAt: serverTimestamp() }, { merge: true });
+      } catch (e) {
+        showError(e, "植え替え日の更新に失敗しました。");
+      }
+    }
+
+    function setPlantImage(id, dataUrl) {
+      if (!state.user) return;
+      setPlantImageLocal(id, dataUrl);
+      state.plants = state.plants.map(function(p) {
+        return p.id === id ? Object.assign({}, p, { image: dataUrl }) : p;
+      });
+      render();
+    }
+
+    function readFileAsDataUrl(file, cb) {
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        cb(String(ev.target.result || ""));
+      };
+      reader.readAsDataURL(file);
     }
 
     function getFilteredPlants() {
@@ -594,77 +803,46 @@
       return filtered.find(function(p) { return p.id === state.selectedId; }) || filtered[0] || null;
     }
 
-    function login(provider, identifier) {
-      state.user = {
-        id: newId(),
-        provider: provider,
-        identifier: identifier,
-        name: provider === "Email" ? identifier : provider + "ユーザー"
-      };
-      saveUser();
-      loadPlants();
-      state.loginOpen = false;
-      render();
+    function getCarePreset(name) {
+      return PLANT_CARE_PRESETS[String(name || "")] || null;
     }
 
-    function logout() {
-      state.user = null;
-      saveUser();
-      loadPlants();
-      render();
+    function applyCarePresetToDraft(force) {
+      const preset = getCarePreset(state.formDraft && state.formDraft.name);
+      if (!preset) return false;
+
+      if (force || !state.formDraft.wateringIntervalDays) {
+        state.formDraft.wateringIntervalDays = String(preset.wateringIntervalDays);
+      }
+      if (force || !state.formDraft.repotIntervalMonths) {
+        state.formDraft.repotIntervalMonths = String(preset.repotIntervalMonths);
+      }
+      return true;
     }
 
-    function upsertPlant(p) {
-      const idx = state.plants.findIndex(function(x) { return x.id === p.id; });
-      if (idx >= 0) state.plants[idx] = Object.assign({}, state.plants[idx], p);
-      else state.plants.unshift(p);
-      state.selectedId = p.id;
-      state.showForm = false;
-      state.editingId = null;
-      savePlants();
-      render();
+    function carePresetNoteHtml() {
+      const preset = getCarePreset(state.formDraft && state.formDraft.name);
+      if (!preset) {
+        return '<div class="small" style="margin-top:4px;">※ 植物名候補185件を格納。候補から選ぶと参考頻度を反映できます。</div>';
+      }
+      return '<div class="small" style="margin-top:4px;">参考：水やり約' + esc(preset.wateringIntervalDays) + '日ごと / 植え替え約' + esc(preset.repotIntervalMonths) + 'か月ごと<br>' + esc(preset.memo) + '</div>';
     }
 
-    function deletePlant(id) {
-      if (!confirm("この植物を削除しますか？")) return;
-      state.plants = state.plants.filter(function(p) { return p.id !== id; });
-      if (state.selectedId === id) state.selectedId = null;
-      savePlants();
-      render();
+    function plantNameDatalistHtml() {
+      return '<datalist id="plantNameOptions">' + PLANT_NAME_OPTIONS.map(function(name) {
+        return '<option value="' + esc(name) + '"></option>';
+      }).join("") + '</datalist>';
     }
 
-    function markWatered(id) {
-      const t = todayStr();
-      state.plants = state.plants.map(function(p) {
-        return p.id === id ? Object.assign({}, p, { lastWateredDate: t }) : p;
-      });
-      savePlants();
-      render();
-    }
-
-    function markRepotted(id) {
-      const t = todayStr();
-      state.plants = state.plants.map(function(p) {
-        return p.id === id ? Object.assign({}, p, { lastRepottedDate: t }) : p;
-      });
-      savePlants();
-      render();
-    }
-
-    function setPlantImage(id, dataUrl) {
-      state.plants = state.plants.map(function(p) {
-        return p.id === id ? Object.assign({}, p, { image: dataUrl }) : p;
-      });
-      savePlants();
-      render();
-    }
-
-    function readFileAsDataUrl(file, cb) {
-      const reader = new FileReader();
-      reader.onload = function(ev) {
-        cb(String(ev.target.result || ""));
-      };
-      reader.readAsDataURL(file);
+    function plantNameInputHtml() {
+      return ''
+        + '<div>'
+        + '  <label class="form-label">植物名</label>'
+        + '  <input class="input" list="plantNameOptions" data-form-field="name" value="' + esc(state.formDraft.name || "") + '" placeholder="候補から選択、または手入力">'
+        +    plantNameDatalistHtml()
+        +    carePresetNoteHtml()
+        + '  <div style="margin-top:8px;"><button type="button" class="btn" data-action="apply-care-preset">参考頻度を反映</button></div>'
+        + '</div>';
     }
 
     function avatarHtml(p) {
@@ -675,37 +853,42 @@
     }
 
     function renderHeader() {
-      const userHtml = state.user
-        ? '<div class="user-info"><span class="small">👤 ' + esc(state.user.name) + '（' + esc(state.user.provider) + '）</span> <button class="btn" data-action="logout">ログアウト</button></div>'
-        : renderLoginMenu();
+      const authHtml = !state.authReady
+        ? '<span class="small">認証確認中...</span>'
+        : state.user
+          ? renderUserInfo()
+          : renderLoginMenu();
 
       return ''
         + '<header>'
         + '  <div class="wrap header-inner">'
         + '    <div class="title">🌱 植物管理アプリ</div>'
-        + '    <div class="subtitle">ログイン / ローカル保存 / 参考頻度つき</div>'
+        + '    <div class="subtitle">Googleログイン / Firestore保存 / 参考頻度つき</div>'
         + '    <div class="header-actions">'
-        +        userHtml
-        + '      <button class="btn btn-primary" data-action="open-add">＋ 植物を追加</button>'
-        + '      <button class="btn" data-action="clear-data">データ全削除</button>'
+        +        authHtml
+        + '      <button class="btn btn-primary" data-action="open-add" ' + (!state.user ? "disabled" : "") + '>＋ 植物を追加</button>'
+        + '      <button class="btn" data-action="migrate-local" ' + (!state.user ? "disabled" : "") + '>端末データ移行</button>'
         + '    </div>'
         + '  </div>'
         + '</header>';
     }
 
+    function renderUserInfo() {
+      const label = state.user.displayName || state.user.email || "ログイン中";
+      return ''
+        + '<div class="user-info">'
+        + '  <span class="small">👤 ' + esc(label) + '</span>'
+        + '  <button class="btn" data-action="logout">ログアウト</button>'
+        + '</div>';
+    }
+
     function renderLoginMenu() {
       const pop = state.loginOpen ? ''
         + '<div class="login-pop">'
-        + '  <div class="login-pop-title">ログイン方法</div>'
+        + '  <div class="login-pop-title">ログイン</div>'
         + '  <div class="login-list">'
-        + '    <button class="btn btn-outline" data-action="login-provider" data-provider="Google">🟢 Googleでログイン（擬似）</button>'
-        + '    <button class="btn btn-outline" data-action="login-provider" data-provider="Apple">⚪ Appleでログイン（擬似）</button>'
-        + '    <button class="btn btn-outline" data-action="login-provider" data-provider="LINE">🟩 LINEでログイン（擬似）</button>'
-        + '    <div class="email-row">'
-        + '      <input id="emailLoginInput" class="input" value="' + esc(state.emailInput) + '" placeholder="example@email.com">'
-        + '      <button class="btn btn-primary" data-action="login-email">送信</button>'
-        + '    </div>'
-        + '    <div class="small">※ 本物の認証ではありません（デモ）</div>'
+        + '    <button class="btn btn-outline" data-action="login-google">🟢 Googleでログイン</button>'
+        + '    <div class="small">植物データはGoogleアカウントごとにFirestoreへ保存します。</div>'
         + '    <button class="btn" data-action="close-login">閉じる</button>'
         + '  </div>'
         + '</div>' : '';
@@ -718,6 +901,10 @@
     }
 
     function renderSidebar(filtered) {
+      if (!state.user) {
+        return '<aside class="panel"><div class="empty">ログインすると植物データを表示できます。</div></aside>';
+      }
+
       const tabs = [
         { key: "all", label: "すべて" },
         { key: "today", label: "今日" },
@@ -726,7 +913,9 @@
       ];
 
       let items = "";
-      if (!filtered.length) {
+      if (state.loadingPlants) {
+        items = '<li class="empty">読み込み中...</li>';
+      } else if (!filtered.length) {
         items = '<li class="empty">一致する植物がありません。</li>';
       } else {
         items = filtered.map(function(p) {
@@ -766,8 +955,12 @@
     }
 
     function renderDetail(selected) {
+      if (!state.user) {
+        return '<section class="panel detail"><div class="muted">ログインしてください。Googleアカウントで利用できます。</div></section>';
+      }
+
       if (!selected) {
-        return '<section class="panel detail"><div class="muted">左の一覧から植物を選択してください。</div></section>';
+        return '<section class="panel detail"><div class="muted">左の一覧から植物を選択、または植物を追加してください。</div></section>';
       }
 
       const c = calc(selected);
@@ -821,6 +1014,7 @@
         + '        <span class="btn">' + (selected.image ? "画像を差し替える" : "画像を登録する") + '</span>'
         + '        <input class="hidden-input" type="file" accept="image/*" data-action="detail-image" data-id="' + esc(selected.id) + '">'
         + '      </label>'
+        + '      <div class="small" style="margin-top:6px;">※ 画像はこの端末内に保存されます。別端末には同期されません。</div>'
         + '    </div>'
         + '  </div>'
         + '  <div class="card" style="margin-top:16px;">'
@@ -840,13 +1034,6 @@
 
     function renderForm() {
       if (!state.showForm) return "";
-      const p = state.editingId
-        ? Object.assign({}, state.plants.find(function(x) { return x.id === state.editingId; }) || emptyPlant())
-        : (state.formDraft || emptyPlant());
-
-      if (!state.formDraft || state.formDraft.id !== p.id) {
-        state.formDraft = p;
-      }
 
       const templateBtns = Object.keys(TEMPLATES).map(function(k) {
         return '<button class="btn" data-action="apply-template" data-template="' + esc(k) + '">' + esc(k) + 'テンプレ</button>';
@@ -896,6 +1083,7 @@
         + '            <span class="btn">' + (state.formDraft.image ? "画像を差し替える" : "画像を登録する") + '</span>'
         + '            <input class="hidden-input" type="file" accept="image/*" data-action="form-image">'
         + '          </label>'
+        + '          <div class="small" style="margin-top:6px;">※ 画像はこの端末内に保存します。植物データのみクラウド同期します。</div>'
         + '        </div>'
         + '        <div class="form-actions">'
         + '          <button class="btn" data-action="close-form">キャンセル</button>'
@@ -904,50 +1092,6 @@
         + '      </div>'
         + '    </div>'
         + '  </div>'
-        + '</div>';
-    }
-
-
-
-    function getCarePreset(name) {
-      return PLANT_CARE_PRESETS[String(name || "")] || null;
-    }
-
-    function applyCarePresetToDraft(force) {
-      const preset = getCarePreset(state.formDraft && state.formDraft.name);
-      if (!preset) return false;
-
-      if (force || !state.formDraft.wateringIntervalDays) {
-        state.formDraft.wateringIntervalDays = String(preset.wateringIntervalDays);
-      }
-      if (force || !state.formDraft.repotIntervalMonths) {
-        state.formDraft.repotIntervalMonths = String(preset.repotIntervalMonths);
-      }
-      return true;
-    }
-
-    function carePresetNoteHtml() {
-      const preset = getCarePreset(state.formDraft && state.formDraft.name);
-      if (!preset) {
-        return '<div class="small" style="margin-top:4px;">※ 植物名候補185件を格納。候補から選ぶと参考頻度を反映できます。</div>';
-      }
-      return '<div class="small" style="margin-top:4px;">参考：水やり約' + esc(preset.wateringIntervalDays) + '日ごと / 植え替え約' + esc(preset.repotIntervalMonths) + 'か月ごと<br>' + esc(preset.memo) + '</div>';
-    }
-
-    function plantNameDatalistHtml() {
-      return '<datalist id="plantNameOptions">' + PLANT_NAME_OPTIONS.map(function(name) {
-        return '<option value="' + esc(name) + '"></option>';
-      }).join("") + '</datalist>';
-    }
-
-    function plantNameInputHtml() {
-      return ''
-        + '<div>'
-        + '  <label class="form-label">植物名</label>'
-        + '  <input class="input" list="plantNameOptions" data-form-field="name" value="' + esc(state.formDraft.name || "") + '" placeholder="候補から選択、または手入力">'
-        +    plantNameDatalistHtml()
-        +    carePresetNoteHtml()
-        + '  <div style="margin-top:8px;"><button type="button" class="btn" data-action="apply-care-preset">参考頻度を反映</button></div>'
         + '</div>';
     }
 
@@ -964,7 +1108,7 @@
     }
 
     function render() {
-      const filtered = getFilteredPlants();
+      const filtered = state.user ? getFilteredPlants() : [];
       if (!state.selectedId && filtered.length) state.selectedId = filtered[0].id;
       const selected = getSelected(filtered);
 
@@ -974,7 +1118,7 @@
         + renderSidebar(filtered)
         + renderDetail(selected)
         + '</main>'
-        + '<div class="footer">植物名候補185件と参考頻度を格納済み。iCal書き出し機能は削除済み。</div>'
+        + '<div class="footer">Googleログイン版。植物データはFirestoreに保存、画像は端末内保存です。</div>'
         + renderForm();
 
       document.getElementById("app").innerHTML = html;
@@ -999,20 +1143,8 @@
           });
         }
 
-        if (action === "login-provider") {
-          el.addEventListener("click", function() {
-            const provider = el.getAttribute("data-provider");
-            login(provider, provider.toLowerCase() + "_" + newId());
-          });
-        }
-
-        if (action === "login-email") {
-          el.addEventListener("click", function() {
-            const input = document.getElementById("emailLoginInput");
-            const v = input ? input.value.trim() : "";
-            if (!v) return;
-            login("Email", v);
-          });
+        if (action === "login-google") {
+          el.addEventListener("click", signInGoogle);
         }
 
         if (action === "logout") {
@@ -1021,6 +1153,7 @@
 
         if (action === "open-add") {
           el.addEventListener("click", function() {
+            if (!state.user) return alert("ログインしてください。");
             state.formDraft = emptyPlant();
             state.editingId = null;
             state.showForm = true;
@@ -1028,14 +1161,8 @@
           });
         }
 
-        if (action === "clear-data") {
-          el.addEventListener("click", function() {
-            if (!confirm("このユーザーのローカル保存データを全削除しますか？")) return;
-            localStorage.removeItem(getStorageKey());
-            state.plants = [];
-            state.selectedId = null;
-            render();
-          });
+        if (action === "migrate-local") {
+          el.addEventListener("click", migrateLocalPlants);
         }
 
         if (action === "select") {
@@ -1130,13 +1257,6 @@
         });
       }
 
-      const emailInput = document.getElementById("emailLoginInput");
-      if (emailInput) {
-        emailInput.addEventListener("input", function(e) {
-          state.emailInput = e.target.value;
-        });
-      }
-
       document.querySelectorAll("[data-form-field]").forEach(function(el) {
         el.addEventListener("input", function(e) {
           const field = el.getAttribute("data-form-field");
@@ -1192,8 +1312,83 @@
       });
     }
 
-    loadUser();
-    loadPlants();
+    async function migrateLocalPlants() {
+      if (!state.user) {
+        alert("ログインしてください。");
+        return;
+      }
+
+      const candidates = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        if (key.indexOf("PLANTCARE_") !== 0) continue;
+        if (key.indexOf("PLANT_LOCAL_IMAGES_") === 0) continue;
+        try {
+          const value = JSON.parse(localStorage.getItem(key) || "[]");
+          if (Array.isArray(value) && value.length) {
+            candidates.push({ key: key, plants: value });
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      if (!candidates.length) {
+        alert("移行できる端末内データが見つかりませんでした。");
+        return;
+      }
+
+      let count = 0;
+      candidates.forEach(function(c) { count += c.plants.length; });
+
+      if (!confirm("端末内にある植物データ " + String(count) + "件を、現在ログイン中のアカウントへ移行しますか？")) {
+        return;
+      }
+
+      try {
+        const batch = writeBatch(db);
+        const imageMap = getLocalImageMap();
+
+        candidates.forEach(function(c) {
+          c.plants.forEach(function(p) {
+            const id = p.id || newId();
+            const normalized = normalizePlant(id, p);
+            batch.set(plantDocRef(id), firestorePlantData(normalized), { merge: true });
+            if (normalized.image) imageMap[id] = normalized.image;
+          });
+        });
+
+        await batch.commit();
+        saveLocalImageMap(imageMap);
+        alert("移行しました。反映まで少しお待ちください。");
+      } catch (e) {
+        showError(e, "端末データの移行に失敗しました。");
+      }
+    }
+
+    onAuthStateChanged(auth, function(user) {
+      state.user = user || null;
+      state.authReady = true;
+      state.loginOpen = false;
+      state.selectedId = null;
+      state.showForm = false;
+      state.formDraft = null;
+
+      if (plantsUnsubscribe) {
+        plantsUnsubscribe();
+        plantsUnsubscribe = null;
+      }
+
+      if (state.user) {
+        subscribePlants();
+      } else {
+        state.plants = [];
+        state.loadingPlants = false;
+        render();
+      }
+    });
+
     render();
   </script>
 </body>
