@@ -1,7 +1,7 @@
 {
   "name": "植物管理アプリ",
   "short_name": "植物管理",
-  "description": "植物の水やり・植え替え・育成メモを管理するアプリ",
+  "description": "植物の水やり・植え替え・育成写真を管理するアプリ",
   "start_url": "./",
   "scope": "./",
   "display": "browser",

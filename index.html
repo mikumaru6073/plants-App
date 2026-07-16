@@ -303,6 +303,52 @@
       color: var(--muted);
     }
     .hidden-input { display: none; }
+
+    .photo-gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .photo-card {
+      position: relative;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      background: #fafafa;
+      aspect-ratio: 1 / 1;
+    }
+    .photo-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .photo-delete {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      border: 0;
+      border-radius: 999px;
+      background: rgba(23, 23, 23, 0.70);
+      color: #fff;
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .photo-empty {
+      margin-top: 10px;
+      border: 1px dashed var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      color: var(--muted);
+      text-align: center;
+      background: #fafafa;
+    }
     .modal-backdrop {
       position: fixed;
       inset: 0;
@@ -481,7 +527,9 @@
       editingId: null,
       loginOpen: false,
       formDraft: null,
-      loadingPlants: false
+      loadingPlants: false,
+      imageRecordsByPlant: {},
+      imageUrlCache: {}
     };
 
     let plantsUnsubscribe = null;
@@ -595,44 +643,308 @@
       return doc(db, "users", getUid(), "plants", id);
     }
 
-    function localImageKey() {
-      return "PLANT_LOCAL_IMAGES_" + getUid();
+    const IMAGE_DB_NAME = "plantcare-indexed-images-v1";
+    const IMAGE_STORE = "plantImages";
+    let imageDbPromise = null;
+
+    function openImageDb() {
+      if (imageDbPromise) return imageDbPromise;
+
+      imageDbPromise = new Promise(function(resolve, reject) {
+        const req = indexedDB.open(IMAGE_DB_NAME, 1);
+
+        req.onupgradeneeded = function(ev) {
+          const dbi = ev.target.result;
+          if (!dbi.objectStoreNames.contains(IMAGE_STORE)) {
+            const store = dbi.createObjectStore(IMAGE_STORE, { keyPath: "id" });
+            store.createIndex("uid", "uid", { unique: false });
+            store.createIndex("plantId", "plantId", { unique: false });
+            store.createIndex("uidPlant", "uidPlant", { unique: false });
+          }
+        };
+
+        req.onsuccess = function(ev) {
+          resolve(ev.target.result);
+        };
+
+        req.onerror = function() {
+          reject(req.error || new Error("IndexedDBを開けませんでした。"));
+        };
+      });
+
+      return imageDbPromise;
     }
 
-    function getLocalImageMap() {
-      if (!state.user) return {};
-      try {
-        return JSON.parse(localStorage.getItem(localImageKey()) || "{}");
-      } catch (e) {
-        return {};
+    function uidPlantKey(uid, plantId) {
+      return String(uid || "") + "::" + String(plantId || "");
+    }
+
+    function imageRecordId(plantId) {
+      return String(plantId) + "_" + String(Date.now()) + "_" + Math.random().toString(36).slice(2, 8);
+    }
+
+    function txDone(tx) {
+      return new Promise(function(resolve, reject) {
+        tx.oncomplete = function() { resolve(); };
+        tx.onerror = function() { reject(tx.error || new Error("IndexedDBの処理に失敗しました。")); };
+        tx.onabort = function() { reject(tx.error || new Error("IndexedDBの処理が中断されました。")); };
+      });
+    }
+
+    async function getAllImageRecordsRaw() {
+      if (!state.user) return [];
+      const dbi = await openImageDb();
+      return new Promise(function(resolve, reject) {
+        const tx = dbi.transaction(IMAGE_STORE, "readonly");
+        const store = tx.objectStore(IMAGE_STORE);
+        const req = store.getAll();
+
+        req.onsuccess = function() {
+          const uid = getUid();
+          const all = Array.isArray(req.result) ? req.result : [];
+          resolve(all.filter(function(r) { return r && r.uid === uid; }));
+        };
+
+        req.onerror = function() {
+          reject(req.error || new Error("画像データを読み込めませんでした。"));
+        };
+      });
+    }
+
+    async function refreshImageRecords() {
+      if (!state.user) {
+        state.imageRecordsByPlant = {};
+        return;
       }
+
+      const records = await getAllImageRecordsRaw();
+      records.sort(function(a, b) {
+        return Number(a.createdAt || 0) - Number(b.createdAt || 0);
+      });
+
+      const grouped = {};
+      records.forEach(function(rec) {
+        if (!grouped[rec.plantId]) grouped[rec.plantId] = [];
+        grouped[rec.plantId].push(rec);
+      });
+
+      state.imageRecordsByPlant = grouped;
     }
 
-    function saveLocalImageMap(map) {
+    function imageUrlForRecord(rec) {
+      if (!rec || !rec.blob) return "";
+      if (!state.imageUrlCache[rec.id]) {
+        state.imageUrlCache[rec.id] = URL.createObjectURL(rec.blob);
+      }
+      return state.imageUrlCache[rec.id];
+    }
+
+    function revokeImageUrl(id) {
+      const url = state.imageUrlCache[id];
+      if (url) URL.revokeObjectURL(url);
+      delete state.imageUrlCache[id];
+    }
+
+    function clearImageUrlCache() {
+      Object.keys(state.imageUrlCache || {}).forEach(function(id) {
+        revokeImageUrl(id);
+      });
+      state.imageUrlCache = {};
+    }
+
+    function getPlantImages(plantId) {
+      return state.imageRecordsByPlant[plantId] || [];
+    }
+
+    function firstImageUrlForPlant(plantId) {
+      const arr = getPlantImages(plantId);
+      if (!arr.length) return "";
+      return imageUrlForRecord(arr[arr.length - 1]);
+    }
+
+    async function putImageRecord(rec) {
+      const dbi = await openImageDb();
+      const tx = dbi.transaction(IMAGE_STORE, "readwrite");
+      tx.objectStore(IMAGE_STORE).put(rec);
+      await txDone(tx);
+    }
+
+    async function deleteImageRecord(id) {
       if (!state.user) return;
+      const dbi = await openImageDb();
+      const tx = dbi.transaction(IMAGE_STORE, "readwrite");
+      tx.objectStore(IMAGE_STORE).delete(id);
+      await txDone(tx);
+      revokeImageUrl(id);
+      await refreshImageRecords();
+      render();
+    }
+
+    async function deleteImagesForPlant(plantId) {
+      if (!state.user) return;
+      const records = getPlantImages(plantId).slice();
+      if (!records.length) return;
+
+      const dbi = await openImageDb();
+      const tx = dbi.transaction(IMAGE_STORE, "readwrite");
+      const store = tx.objectStore(IMAGE_STORE);
+
+      records.forEach(function(rec) {
+        store.delete(rec.id);
+        revokeImageUrl(rec.id);
+      });
+
+      await txDone(tx);
+      delete state.imageRecordsByPlant[plantId];
+    }
+
+    function dataUrlToBlob(dataUrl) {
+      const parts = String(dataUrl || "").split(",");
+      if (parts.length < 2) return null;
+      const meta = parts[0];
+      const raw = atob(parts[1]);
+      const mimeMatch = meta.match(/data:([^;]+);base64/);
+      const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
+      const arr = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+      return new Blob([arr], { type: mime });
+    }
+
+    async function migrateLegacyLocalImagesToIndexedDB() {
+      if (!state.user) return;
+      const flag = "PLANT_INDEXEDDB_IMAGE_MIGRATED_" + getUid();
+      if (localStorage.getItem(flag)) return;
+
+      const legacyKey = "PLANT_LOCAL_IMAGES_" + getUid();
+      let legacy = {};
       try {
-        localStorage.setItem(localImageKey(), JSON.stringify(map || {}));
+        legacy = JSON.parse(localStorage.getItem(legacyKey) || "{}");
       } catch (e) {
-        alert("画像の端末保存容量が上限に近い可能性があります。画像を小さくして再登録してください。");
+        legacy = {};
+      }
+
+      const plantIds = Object.keys(legacy || {});
+      if (!plantIds.length) {
+        localStorage.setItem(flag, "1");
+        return;
+      }
+
+      const existing = await getAllImageRecordsRaw();
+      const hasImage = {};
+      existing.forEach(function(rec) {
+        hasImage[rec.plantId] = true;
+      });
+
+      for (const plantId of plantIds) {
+        if (hasImage[plantId]) continue;
+        const blob = dataUrlToBlob(legacy[plantId]);
+        if (!blob) continue;
+
+        await putImageRecord({
+          id: imageRecordId(plantId),
+          uid: getUid(),
+          plantId: plantId,
+          uidPlant: uidPlantKey(getUid(), plantId),
+          blob: blob,
+          createdAt: Date.now()
+        });
+      }
+
+      localStorage.setItem(flag, "1");
+    }
+
+    function compressImageFile(file) {
+      return new Promise(function(resolve, reject) {
+        if (!file || !file.type || !file.type.startsWith("image/")) {
+          reject(new Error("画像ファイルを選択してください。"));
+          return;
+        }
+
+        const img = new Image();
+        const objectUrl = URL.createObjectURL(file);
+
+        img.onload = function() {
+          URL.revokeObjectURL(objectUrl);
+
+          const maxSide = 1200;
+          const ratio = Math.min(1, maxSide / Math.max(img.width, img.height));
+          const width = Math.max(1, Math.round(img.width * ratio));
+          const height = Math.max(1, Math.round(img.height * ratio));
+
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(function(blob) {
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error("画像の圧縮に失敗しました。"));
+            }
+          }, "image/jpeg", 0.78);
+        };
+
+        img.onerror = function() {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error("画像を読み込めませんでした。"));
+        };
+
+        img.src = objectUrl;
+      });
+    }
+
+    async function addImagesToPlant(plantId, files) {
+      if (!state.user) {
+        alert("ログインしてください。");
+        return;
+      }
+
+      const arr = Array.from(files || []).filter(function(file) {
+        return file && file.type && file.type.startsWith("image/");
+      });
+
+      if (!arr.length) return;
+
+      try {
+        for (let i = 0; i < arr.length; i++) {
+          const blob = await compressImageFile(arr[i]);
+          await putImageRecord({
+            id: imageRecordId(plantId),
+            uid: getUid(),
+            plantId: plantId,
+            uidPlant: uidPlantKey(getUid(), plantId),
+            blob: blob,
+            createdAt: Date.now() + i
+          });
+        }
+
+        await refreshImageRecords();
+        render();
+      } catch (e) {
+        showError(e, "画像の保存に失敗しました。");
       }
     }
 
-    function getPlantImage(id) {
-      const map = getLocalImageMap();
-      return map[id] || "";
-    }
+    function galleryHtml(plantId) {
+      const photos = getPlantImages(plantId);
 
-    function setPlantImageLocal(id, image) {
-      const map = getLocalImageMap();
-      if (image) map[id] = image;
-      else delete map[id];
-      saveLocalImageMap(map);
-    }
+      if (!photos.length) {
+        return '<div class="photo-empty">まだ写真がありません。</div>';
+      }
 
-    function removePlantImageLocal(id) {
-      const map = getLocalImageMap();
-      delete map[id];
-      saveLocalImageMap(map);
+      return '<div class="photo-gallery">'
+        + photos.map(function(rec) {
+            const url = imageUrlForRecord(rec);
+            return ''
+              + '<div class="photo-card">'
+              + '  <img src="' + esc(url) + '" alt="growth photo">'
+              + '  <button class="photo-delete" data-action="delete-photo" data-photo-id="' + esc(rec.id) + '" title="削除">×</button>'
+              + '</div>';
+          }).join("")
+        + '</div>';
     }
 
     function firestorePlantData(p) {
@@ -669,11 +981,8 @@
       plantsUnsubscribe = onSnapshot(
         plantsCollectionRef(),
         function(snapshot) {
-          const imageMap = getLocalImageMap();
           state.plants = snapshot.docs.map(function(d) {
-            const p = normalizePlant(d.id, d.data());
-            p.image = imageMap[d.id] || "";
-            return p;
+            return normalizePlant(d.id, d.data());
           });
           state.loadingPlants = false;
           if (state.selectedId && !state.plants.find(function(p) { return p.id === state.selectedId; })) {
@@ -713,11 +1022,6 @@
       try {
         const id = p.id || newId();
         const data = firestorePlantData(Object.assign({}, p, { id: id }));
-
-        if (p.image) {
-          setPlantImageLocal(id, p.image);
-        }
-
         await setDoc(plantDocRef(id), data, { merge: true });
         state.selectedId = id;
         state.showForm = false;
@@ -734,7 +1038,7 @@
       if (!confirm("この植物を削除しますか？")) return;
       try {
         await deleteDoc(plantDocRef(id));
-        removePlantImageLocal(id);
+        await deleteImagesForPlant(id);
         if (state.selectedId === id) state.selectedId = null;
       } catch (e) {
         showError(e, "植物データの削除に失敗しました。");
@@ -757,23 +1061,6 @@
       } catch (e) {
         showError(e, "植え替え日の更新に失敗しました。");
       }
-    }
-
-    function setPlantImage(id, dataUrl) {
-      if (!state.user) return;
-      setPlantImageLocal(id, dataUrl);
-      state.plants = state.plants.map(function(p) {
-        return p.id === id ? Object.assign({}, p, { image: dataUrl }) : p;
-      });
-      render();
-    }
-
-    function readFileAsDataUrl(file, cb) {
-      const reader = new FileReader();
-      reader.onload = function(ev) {
-        cb(String(ev.target.result || ""));
-      };
-      reader.readAsDataURL(file);
     }
 
     function getFilteredPlants() {
@@ -853,8 +1140,9 @@
     }
 
     function avatarHtml(p) {
-      if (p.image) {
-        return '<img class="avatar" src="' + esc(p.image) + '" alt="' + esc(p.name || "plant") + '">';
+      const url = p && p.id ? firstImageUrlForPlant(p.id) : "";
+      if (url) {
+        return '<img class="avatar" src="' + esc(url) + '" alt="' + esc(p.name || "plant") + '">';
       }
       return '<div class="avatar">🌿</div>';
     }
@@ -972,9 +1260,7 @@
 
       const c = calc(selected);
       const st = makeStatus(c.daysToWater);
-      const imageBlock = selected.image
-        ? '<img class="image-preview" src="' + esc(selected.image) + '" alt="plant">'
-        : '<div class="image-preview">画像なし</div>';
+      const photoCount = getPlantImages(selected.id).length;
 
       return ''
         + '<section class="panel detail">'
@@ -1015,13 +1301,13 @@
         +        rowHtml("設置場所", selected.location || "—")
         + '    </div>'
         + '    <div class="card">'
-        + '      <h3>画像（1枚）</h3>'
-        +        imageBlock
-        + '      <label class="file-button" style="margin-top:10px;display:inline-block;">'
-        + '        <span class="btn">' + (selected.image ? "画像を差し替える" : "画像を登録する") + '</span>'
-        + '        <input class="hidden-input" type="file" accept="image/*" data-action="detail-image" data-id="' + esc(selected.id) + '">'
+        + '      <h3>成長写真（' + esc(photoCount) + '枚）</h3>'
+        + '      <label class="file-button" style="display:inline-block;">'
+        + '        <span class="btn btn-primary">＋ 写真を追加</span>'
+        + '        <input class="hidden-input" type="file" accept="image/*" multiple data-action="detail-images" data-id="' + esc(selected.id) + '">'
         + '      </label>'
-        + '      <div class="small" style="margin-top:6px;">※ 画像はこの端末内に保存されます。別端末には同期されません。</div>'
+        + '      <div class="small" style="margin-top:6px;">※ 写真はこの端末内のIndexedDBに保存されます。別端末には同期されません。</div>'
+        +        galleryHtml(selected.id)
         + '    </div>'
         + '  </div>'
         + '  <div class="card" style="margin-top:16px;">'
@@ -1045,10 +1331,6 @@
       const templateBtns = Object.keys(TEMPLATES).map(function(k) {
         return '<button class="btn" data-action="apply-template" data-template="' + esc(k) + '">' + esc(k) + 'テンプレ</button>';
       }).join("");
-
-      const img = state.formDraft.image
-        ? '<img class="image-preview" src="' + esc(state.formDraft.image) + '" alt="plant">'
-        : '<div class="image-preview">画像なし</div>';
 
       return ''
         + '<div class="modal-backdrop">'
@@ -1083,15 +1365,7 @@
         + '        <textarea class="textarea" data-form-field="notes" placeholder="育成ログ・気づき">' + esc(state.formDraft.notes) + '</textarea>'
         + '      </div>'
         + '      <div class="form-grid">'
-        + '        <div>'
-        + '          <label class="form-label">画像（1枚）</label>'
-        +            img
-        + '          <label class="file-button" style="margin-top:10px;display:inline-block;">'
-        + '            <span class="btn">' + (state.formDraft.image ? "画像を差し替える" : "画像を登録する") + '</span>'
-        + '            <input class="hidden-input" type="file" accept="image/*" data-action="form-image">'
-        + '          </label>'
-        + '          <div class="small" style="margin-top:6px;">※ 画像はこの端末内に保存します。植物データのみクラウド同期します。</div>'
-        + '        </div>'
+        + '        <div class="small">写真は植物を保存したあと、詳細画面の「成長写真」から複数追加できます。</div>'
         + '        <div class="form-actions">'
         + '          <button class="btn" data-action="close-form">キャンセル</button>'
         + '          <button class="btn btn-primary" data-action="save-form">保存</button>'
@@ -1125,7 +1399,7 @@
         + renderSidebar(filtered)
         + renderDetail(selected)
         + '</main>'
-        + '<div class="footer">Googleログイン版。植物データはFirestore database ID「default」に保存、画像は端末内保存です。</div>'
+        + '<div class="footer">Googleログイン版。植物データはFirestore database ID「default」に保存、写真はIndexedDBへ端末内保存です。</div>'
         + renderForm();
 
       document.getElementById("app").innerHTML = html;
@@ -1201,6 +1475,15 @@
         if (action === "delete") {
           el.addEventListener("click", function() {
             deletePlant(el.getAttribute("data-id"));
+          });
+        }
+
+        if (action === "delete-photo") {
+          el.addEventListener("click", function() {
+            const photoId = el.getAttribute("data-photo-id");
+            if (!photoId) return;
+            if (!confirm("この写真を削除しますか？")) return;
+            deleteImageRecord(photoId);
           });
         }
 
@@ -1285,25 +1568,12 @@
         });
       });
 
-      document.querySelectorAll('input[type="file"][data-action="detail-image"]').forEach(function(input) {
+      document.querySelectorAll('input[type="file"][data-action="detail-images"]').forEach(function(input) {
         input.addEventListener("change", function(e) {
-          const file = e.target.files && e.target.files[0];
+          const files = e.target.files || [];
           const id = input.getAttribute("data-id");
-          if (!file || !id) return;
-          readFileAsDataUrl(file, function(dataUrl) {
-            setPlantImage(id, dataUrl);
-          });
-        });
-      });
-
-      document.querySelectorAll('input[type="file"][data-action="form-image"]').forEach(function(input) {
-        input.addEventListener("change", function(e) {
-          const file = e.target.files && e.target.files[0];
-          if (!file) return;
-          readFileAsDataUrl(file, function(dataUrl) {
-            state.formDraft.image = dataUrl;
-            render();
-          });
+          if (!files.length || !id) return;
+          addImagesToPlant(id, files);
         });
       });
     }
@@ -1355,20 +1625,33 @@
 
       try {
         const batch = writeBatch(db);
-        const imageMap = getLocalImageMap();
 
-        candidates.forEach(function(c) {
-          c.plants.forEach(function(p) {
+        for (const c of candidates) {
+          for (const p of c.plants) {
             const id = p.id || newId();
             const normalized = normalizePlant(id, p);
             batch.set(plantDocRef(id), firestorePlantData(normalized), { merge: true });
-            if (normalized.image) imageMap[id] = normalized.image;
-          });
-        });
+
+            if (normalized.image) {
+              const blob = dataUrlToBlob(normalized.image);
+              if (blob) {
+                await putImageRecord({
+                  id: imageRecordId(id),
+                  uid: getUid(),
+                  plantId: id,
+                  uidPlant: uidPlantKey(getUid(), id),
+                  blob: blob,
+                  createdAt: Date.now()
+                });
+              }
+            }
+          }
+        }
 
         await batch.commit();
-        saveLocalImageMap(imageMap);
+        await refreshImageRecords();
         alert("移行しました。反映まで少しお待ちください。");
+        render();
       } catch (e) {
         showError(e, "端末データの移行に失敗しました。");
       }
@@ -1388,8 +1671,16 @@
       }
 
       if (state.user) {
-        subscribePlants();
+        migrateLegacyLocalImagesToIndexedDB()
+          .then(refreshImageRecords)
+          .then(subscribePlants)
+          .catch(function(e) {
+            showError(e, "端末内画像データの準備に失敗しました。");
+            subscribePlants();
+          });
       } else {
+        clearImageUrlCache();
+        state.imageRecordsByPlant = {};
         state.plants = [];
         state.loadingPlants = false;
         render();
